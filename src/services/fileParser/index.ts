@@ -233,13 +233,36 @@ export const parseTextQuestions = (text: string): { questions: Omit<Question, 'i
         
         // 分离题干、选项、答案和解析
         
-        // 提取选项
+        // 1. 找到所有答案和解析标记的位置
+        const allMarks = [
+          // 答案标记
+          rawQuestionText.search(/\s*答案：?/),
+          rawQuestionText.search(/\s*【答案/),
+          rawQuestionText.search(/\s*【答案与解析/),
+          // 解析标记
+          rawQuestionText.search(/\s*解析：?/),
+          rawQuestionText.search(/\s*【解析/)
+        ];
+        
+        // 2. 找到最前面的标记位置
+        let firstMarkIndex = rawQuestionText.length;
+        for (const index of allMarks) {
+          if (index !== -1 && index < firstMarkIndex) {
+            firstMarkIndex = index;
+          }
+        }
+        
+        // 3. 只在第一个标记之前的文本中提取选项
+        const textBeforeMarks = rawQuestionText.slice(0, firstMarkIndex);
+        
+        // 4. 提取选项（只在第一个标记之前的文本中）
         const options: Option[] = [];
-        const optionRegex = /\s*([A-Z])\.\s*(.+?)(?=\s*[A-Z]\.|\s*答案|\s*【答案|$)/g;
+        // 更新选项正则表达式，支持中文句号（。）
+        const optionRegex = /\s*([A-Z])[.．]\s*(.+?)(?=\s*[A-Z][.．]|$)/g;
         let optionMatch;
         let hasOptions = false;
         
-        while ((optionMatch = optionRegex.exec(rawQuestionText)) !== null) {
+        while ((optionMatch = optionRegex.exec(textBeforeMarks)) !== null) {
           hasOptions = true;
           const [, optionId, optionContent] = optionMatch;
           options.push({
@@ -299,70 +322,29 @@ export const parseTextQuestions = (text: string): { questions: Omit<Question, 'i
           analysis = traditionalAnalysisMatch[1].trim();
         }
         
-        // 识别题型：优先从类型标记提取，否则使用关键词识别
+        // 识别题型：优先从类型标记提取，否则使用选项数量判断
         let type: QuestionType = 'unknown';
         
         // 优先从【】中提取题目类型
         if (questionTypeStr) {
           const typeStrLower = questionTypeStr.toLowerCase();
-          if (typeStrLower.includes('单选')) {
+          if (typeStrLower.includes('单选') || typeStrLower.includes('单选题')) {
             type = 'single';
-          } else if (typeStrLower.includes('多选')) {
+          } else if (typeStrLower.includes('多选') || typeStrLower.includes('多选题')) {
             type = 'multiple';
           } else if (typeStrLower.includes('简答') || typeStrLower.includes('论述') || typeStrLower.includes('问答')) {
             type = 'short';
           }
         }
         
-        // 如果类型标记未识别，使用关键词识别
+        // 如果类型标记未识别，使用选项数量判断
         if (type === 'unknown') {
           if (hasOptions) {
-            // 有选项，可能是单选或多选
-            const contentLower = content.toLowerCase();
-            
-            // 多选题关键词
-            const multipleChoiceKeywords = ['多选', '哪些', '哪几项', '多项', '至少两个', '哪些是', '哪些正确'];
-            const isMultipleChoice = multipleChoiceKeywords.some(keyword => contentLower.includes(keyword));
-            
-            if (isMultipleChoice) {
-              type = 'multiple';
-            } else {
-              // 单选题判断
-              const singleChoiceKeywords = ['是（', '正确的是', '不属于', '不是', '正确的选项', '以下哪项', '以上哪项'];
-              const isSingleChoice = singleChoiceKeywords.some(keyword => contentLower.includes(keyword)) || 
-                                    content.endsWith('是？') || 
-                                    content.endsWith('是（）') || 
-                                    content.endsWith('正确的是？');
-              
-              if (isSingleChoice) {
-                type = 'single';
-              }
-            }
+            // 有选项，默认都是单选，除非明确标记为多选
+            type = 'single';
           } else {
-            // 没有选项，可能是简答题/论述题
-            const contentLower = content.toLowerCase();
-            const shortAnswerKeywords = ['简述', '论述', '说明', '解释', '谈谈', '为什么', '如何', '什么是', '试述', '论述题', '简答题', '问答题'];
-            const isShortAnswer = shortAnswerKeywords.some(keyword => contentLower.includes(keyword));
-            
-            if (isShortAnswer) {
-              type = 'short';
-            }
-          }
-        }
-        
-        // 如果仍然无法确定题型，标记为unknown
-        if (type === 'unknown') {
-          const contentLower = content.toLowerCase();
-          
-          // 再次尝试判断
-          if (contentLower.includes('答案：')) {
-            // 有答案但无法确定题型
-            if (contentLower.includes('a.') || contentLower.includes('b.')) {
-              // 有选项格式但未被识别
-              type = 'single'; // 默认按单选处理
-            } else {
-              type = 'short'; // 默认按简答处理
-            }
+            // 没有选项，是简答题或论述题
+            type = 'short';
           }
         }
         

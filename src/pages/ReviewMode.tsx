@@ -16,6 +16,8 @@ const ReviewMode: React.FC = () => {
   });
   const [searchTerm, setSearchTerm] = useState("");
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  // 跟踪筛选条件是否已初始化
+  const [isFilterInitialized, setIsFilterInitialized] = useState(false);
 
   // 计算每个科目的题目数量
   const categoryStats = React.useMemo(() => {
@@ -72,47 +74,64 @@ const ReviewMode: React.FC = () => {
     });
   }, [questions, filter, searchTerm]);
 
-  // 恢复背题进度 - 简化逻辑：有进度就恢复，没有就保持默认值0
-  const restoreProgress = React.useCallback(async () => {
-    try {
-      // 只有在有题目时才恢复进度
-      if (filteredQuestions.length > 0) {
-        // 先查看db中是否有存在的数据
-        const progress = await reviewProgressDB.getProgress();
 
-        if (progress) {
-          // 确保progress.currentIndex是有效数字
-          const savedIndex = typeof progress.currentIndex === 'number' && !isNaN(progress.currentIndex) ? progress.currentIndex : 0;
-          // 如果有进度数据，加载上次的数据，确保索引在有效范围内
-          const newIndex = Math.max(0, Math.min(
-            savedIndex,
-            filteredQuestions.length - 1
-          ));
-          console.log("恢复进度:", newIndex);
 
-          setCurrentQuestionIndex(newIndex);
-        }
-        // 没有进度数据时，保持默认值0（第一道题目）
-      }
-    } catch (error) {
-      console.error("恢复背题进度失败:", error);
-      // 恢复失败时，设置为0
-      setCurrentQuestionIndex(0);
-    }
-  }, [filteredQuestions.length]);
-
-  // 当过滤后的题目变化时，尝试恢复进度
+  // 获取所有题目
   useEffect(() => {
-    // 只有在有题目时才恢复进度
-    if (filteredQuestions.length > 0) {
+    const fetchQuestions = async () => {
+      const questions = await questionDB.getAll();
+      setQuestions(questions);
+    };
+    fetchQuestions();
+  }, []);
+
+  // 组件首次加载时恢复筛选条件和进度
+  useEffect(() => {
+    // 确保只初始化一次筛选条件
+    if (!isFilterInitialized && questions.length > 0) {
       // 使用setTimeout异步调用，确保在题目加载完成后执行
-      const timer = setTimeout(() => {
-        restoreProgress();
+      const timer = setTimeout(async () => {
+        try {
+          // 先查看db中是否有存在的数据
+          const progress = await reviewProgressDB.getProgress();
+
+          if (progress) {
+            // 恢复筛选条件
+            setFilter(progress.filter || {
+              type: "",
+              category: "",
+              difficulty: 0,
+              onlyMarked: false,
+              onlyWrong: false,
+            });
+            
+            // 恢复搜索词
+            setSearchTerm(progress.searchTerm || "");
+            
+            // 确保progress.currentIndex是有效数字
+            const savedIndex = typeof progress.currentIndex === 'number' && !isNaN(progress.currentIndex) ? progress.currentIndex : 0;
+            // 如果有进度数据，加载上次的数据，确保索引在有效范围内
+            const newIndex = Math.max(0, Math.min(
+              savedIndex,
+              filteredQuestions.length - 1
+            ));
+            console.log("恢复进度:", newIndex);
+
+            setCurrentQuestionIndex(newIndex);
+          }
+          
+          // 标记筛选条件已初始化
+          setIsFilterInitialized(true);
+        } catch (error) {
+          console.error("恢复背题进度失败:", error);
+          // 即使恢复失败，也要标记为已初始化
+          setIsFilterInitialized(true);
+        }
       }, 0);
 
       return () => clearTimeout(timer);
     }
-  }, [filteredQuestions.length, restoreProgress]);
+  }, [isFilterInitialized, questions.length, filteredQuestions.length]);
 
   // 保存背题进度到本地存储 - 使用useCallback避免重复创建
   const saveProgress = React.useCallback(
@@ -132,6 +151,42 @@ const ReviewMode: React.FC = () => {
     },
     [filter, searchTerm, currentQuestionIndex, filteredQuestions.length]
   );
+
+  // 当筛选条件变化导致filteredQuestions变化时，调整currentQuestionIndex，确保进度不超过所选条件题目的最大数量
+  useEffect(() => {
+    // 确保filteredQuestions和currentQuestionIndex都已初始化
+    if (isFilterInitialized) {
+      // 获取当前索引的快照，避免闭包问题
+      const currentIndex = currentQuestionIndex;
+      
+      if (filteredQuestions.length > 0) {
+        // 检查当前索引是否超出范围
+        if (currentIndex >= filteredQuestions.length) {
+          // 调整索引为新列表的最后一个题目
+          const newIndex = filteredQuestions.length - 1;
+          // 使用setTimeout异步更新状态，避免级联渲染
+          setTimeout(() => {
+            setCurrentQuestionIndex(newIndex);
+            saveProgress(newIndex);
+          }, 0);
+        } else if (currentIndex < 0) {
+          // 调整索引为第一个题目
+          // 使用setTimeout异步更新状态，避免级联渲染
+          setTimeout(() => {
+            setCurrentQuestionIndex(0);
+            saveProgress(0);
+          }, 0);
+        }
+      } else if (filteredQuestions.length === 0) {
+        // 如果没有题目，重置索引为0
+        // 使用setTimeout异步更新状态，避免级联渲染
+        setTimeout(() => {
+          setCurrentQuestionIndex(0);
+          saveProgress(0);
+        }, 0);
+      }
+    }
+  }, [filteredQuestions.length, isFilterInitialized, saveProgress, currentQuestionIndex]);
 
   // // 组件卸载前保存进度
   // useEffect(() => {
