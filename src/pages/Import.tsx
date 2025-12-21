@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { parseFile } from '../services/fileParser';
 import { questionDB } from '../services/db';
 import type { ImportResult, Question } from '../types';
@@ -10,6 +10,23 @@ const Import: React.FC = () => {
   const [parseResult, setParseResult] = useState<ImportResult | null>(null);
   const [message, setMessage] = useState<string>('');
   const [errors, setErrors] = useState<string[]>([]);
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // 获取现有科目列表
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const allQuestions = await questionDB.getAll();
+        const subjectsSet = new Set(allQuestions.map(q => q.category));
+        setSubjects([...subjectsSet]);
+      } catch (error) {
+        console.error('获取科目列表失败:', error);
+      }
+    };
+    fetchSubjects();
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -55,14 +72,31 @@ const Import: React.FC = () => {
       return;
     }
 
+    // 检查是否选择了科目
+    if (!selectedSubject) {
+      setMessage('请先选择或创建一个科目');
+      return;
+    }
+
     setIsImporting(true);
     setMessage('正在导入题目...');
 
     try {
-      const ids = await questionDB.bulkAdd(parseResult.questions);
-      setMessage(`导入成功，共导入 ${ids.length} 道题目`);
+      // 为所有题目添加选中的科目
+      const questionsWithSubject = parseResult.questions.map(q => ({
+        ...q,
+        category: selectedSubject
+      }));
+      
+      const ids = await questionDB.bulkAdd(questionsWithSubject);
+      setMessage(`导入成功，共导入 ${ids.length} 道题目到"${selectedSubject}"科目`);
       setParseResult(null);
       setFile(null);
+      
+      // 更新科目列表
+      const allQuestions = await questionDB.getAll();
+      const subjectsSet = new Set(allQuestions.map(q => q.category));
+      setSubjects([...subjectsSet]);
     } catch (error) {
       setMessage(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
@@ -98,6 +132,94 @@ const Import: React.FC = () => {
           </div>
         )}
 
+        {/* 科目选择 - 可输入可选择的组合框 */}
+        <div className="mb-4 relative" onClick={() => setShowSuggestions(true)}>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            选择导入科目
+          </label>
+          
+          <div className="relative">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="请输入或选择科目"
+                value={selectedSubject}
+                onChange={(e) => setSelectedSubject(e.target.value)}
+                onKeyPress={(e) => {
+                  // 按回车键创建新科目
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (selectedSubject.trim() && !subjects.includes(selectedSubject.trim())) {
+                      const trimmedName = selectedSubject.trim();
+                      setSubjects([...subjects, trimmedName]);
+                      setSelectedSubject(trimmedName);
+                    }
+                    setShowSuggestions(false);
+                  }
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => {
+                  // 延迟关闭，确保点击建议项能触发
+                  setTimeout(() => setShowSuggestions(false), 200);
+                }}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+              />
+              {/* 下拉箭头指示器 */}
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                <svg 
+                  className={`w-4 h-4 transition-transform duration-300 ${showSuggestions ? 'rotate-180' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+            
+            {/* 下拉建议列表 - 只在 showSuggestions 为 true 时显示 */}
+            {showSuggestions && (
+              <div className="mt-1 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg bg-white dark:bg-gray-800 z-10 absolute w-full">
+                {/* 显示所有科目，突出匹配的选项 */}
+                {subjects.length > 0 ? (
+                  subjects.map(subject => (
+                    <div
+                      key={subject}
+                      onClick={() => {
+                        setSelectedSubject(subject);
+                        setShowSuggestions(false);
+                      }}
+                      className={`px-3 py-2 cursor-pointer transition-colors ${subject.toLowerCase().includes(selectedSubject.toLowerCase()) ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                    >
+                      {subject}
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-gray-500 dark:text-gray-400">
+                    暂无科目，请创建新科目
+                  </div>
+                )}
+                
+                {/* 新增科目选项 */}
+                {selectedSubject.trim() && !subjects.includes(selectedSubject.trim()) && (
+                  <div
+                    key="new-subject"
+                    onClick={() => {
+                      const trimmedName = selectedSubject.trim();
+                      setSubjects([...subjects, trimmedName]);
+                      setSelectedSubject(trimmedName);
+                      setShowSuggestions(false);
+                    }}
+                    className="px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer transition-colors border-t border-gray-200 dark:border-gray-700 mt-2"
+                  >
+                    <span className="text-blue-600 dark:text-blue-400">+ 创建新科目: {selectedSubject.trim()}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="flex space-x-4">
           <button
             onClick={handleParse}
@@ -110,7 +232,7 @@ const Import: React.FC = () => {
           {parseResult && parseResult.questions.length > 0 && (
             <button
               onClick={handleImport}
-              disabled={isParsing || isImporting}
+              disabled={isParsing || isImporting || !selectedSubject}
               className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed transition-colors"
             >
               {isImporting ? '导入中...' : '导入题库'}

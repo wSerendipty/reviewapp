@@ -11,6 +11,7 @@ const QuestionBank: React.FC = () => {
     difficulty: 0,
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [subjectStats, setSubjectStats] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     fetchQuestions();
@@ -21,10 +22,34 @@ const QuestionBank: React.FC = () => {
     try {
       const allQuestions = await questionDB.getAll();
       setQuestions(allQuestions);
+      
+      // 计算科目统计
+      const stats = new Map<string, number>();
+      allQuestions.forEach(q => {
+        stats.set(q.category, (stats.get(q.category) || 0) + 1);
+      });
+      setSubjectStats(stats);
     } catch (error) {
       console.error('获取题目失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+
+
+  // 按科目删除题目
+  const handleDeleteBySubject = async (subject: string) => {
+    if (!window.confirm(`确定要删除"${subject}"科目下的所有题目吗？`)) return;
+    
+    try {
+      const allQuestions = await questionDB.getAll();
+      const subjectQuestions = allQuestions.filter(q => q.category === subject);
+      const ids = subjectQuestions.map(q => q.id);
+      await questionDB.bulkDelete(ids);
+      fetchQuestions();
+    } catch (error) {
+      console.error('删除科目题目失败:', error);
     }
   };
 
@@ -91,7 +116,7 @@ const QuestionBank: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              分类
+              科目
             </label>
             <select
               value={filter.category}
@@ -101,7 +126,7 @@ const QuestionBank: React.FC = () => {
               <option value="">全部</option>
               {categories.map(category => (
                 <option key={category} value={category}>
-                  {category}
+                  {category} ({subjectStats.get(category) || 0}道)
                 </option>
               ))}
             </select>
@@ -137,6 +162,34 @@ const QuestionBank: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
             />
           </div>
+        </div>
+      </div>
+
+      {/* 科目管理 */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">科目管理</h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            共 {subjectStats.size} 个科目
+          </p>
+        </div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[...subjectStats.entries()].map(([subject, count]) => (
+            <div key={subject} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <div>
+                <p className="font-medium">{subject}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{count}道题目</p>
+              </div>
+              <button
+                onClick={() => handleDeleteBySubject(subject)}
+                className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
+                title="删除科目"
+              >
+                🗑️
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 

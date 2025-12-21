@@ -19,7 +19,9 @@ const ExamMode: React.FC = () => {
     includeSingle: true,
     includeMultiple: true,
     includeShort: true,
+    subject: '', // 添加科目筛选
   });
+  const [subjects, setSubjects] = useState<string[]>([]); // 科目列表
   const [result, setResult] = useState<ExamResult | null>(null);
   const [isQuestionListExpanded, setIsQuestionListExpanded] = useState(false);
   
@@ -121,11 +123,15 @@ const ExamMode: React.FC = () => {
     setStatus('finished');
   }, [questions, answers, examName, examSettings.duration, timeRemaining]);
 
-  // 获取所有题目
+  // 获取所有题目和科目
   useEffect(() => {
     const fetchQuestions = async () => {
       const questions = await questionDB.getAll();
       setAllQuestions(questions);
+      
+      // 提取科目列表
+      const subjectsSet = new Set(questions.map(q => q.category));
+      setSubjects(['', ...subjectsSet]);
     };
     fetchQuestions();
   }, []);
@@ -169,6 +175,7 @@ const ExamMode: React.FC = () => {
       if (q.type === 'single' && !examSettings.includeSingle) return false;
       if (q.type === 'multiple' && !examSettings.includeMultiple) return false;
       if (q.type === 'short' && !examSettings.includeShort) return false;
+      if (examSettings.subject && q.category !== examSettings.subject) return false;
       return true;
     });
     
@@ -304,6 +311,26 @@ const ExamMode: React.FC = () => {
                   <span className="text-gray-700 dark:text-gray-300">简答题</span>
                 </label>
               </div>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                选择科目
+              </label>
+              <select
+                value={examSettings.subject}
+                onChange={(e) => setExamSettings({
+                  ...examSettings,
+                  subject: e.target.value,
+                })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+              >
+                {subjects.map(subject => (
+                  <option key={subject} value={subject}>
+                    {subject || '全部科目'}
+                  </option>
+                ))}
+              </select>
             </div>
             
             <div className="text-sm text-gray-500 dark:text-gray-400">

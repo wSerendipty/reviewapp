@@ -235,7 +235,7 @@ export const parseTextQuestions = (text: string): { questions: Omit<Question, 'i
         
         // 提取选项
         const options: Option[] = [];
-        const optionRegex = /\s*([A-Z])\.\s*(.+?)(?=\s*[A-Z]\.|\s*答案|$)/g;
+        const optionRegex = /\s*([A-Z])\.\s*(.+?)(?=\s*[A-Z]\.|\s*答案|\s*【答案|$)/g;
         let optionMatch;
         let hasOptions = false;
         
@@ -255,27 +255,49 @@ export const parseTextQuestions = (text: string): { questions: Omit<Question, 'i
           content = rawQuestionText.slice(0, rawQuestionText.search(/\s*[A-Z]\./)).trim();
         } else {
           // 没有选项的情况，提取答案之前的内容作为题干
-          // 允许答案：前后有任意空格和换行
-          content = rawQuestionText.split(/\s*答案：?\s*/)[0].trim();
+          // 允许多种答案标签格式
+          content = rawQuestionText.split(/\s*(答案：?|【答案|【答案与解析)\s*/)[0].trim();
         }
         
         // 提取答案部分
-        // 使用更健壮的正则表达式，确保能匹配到字符串末尾
-        const answerSectionMatch = rawQuestionText.match(/答案：?\s*([\s\S]*?)(?=\s*解析：|$)/);
-        const answerSection = answerSectionMatch ? answerSectionMatch[1].trim() : '';
-        
-        // 解析答案为合适的格式（只包含正确选项，去除解析内容）
         let answer: string | string[] = '';
-        if (answerSection) {
-          // 只提取答案部分，去除可能的解析内容
-          const pureAnswer = answerSection.replace(/\s*解析：.*$/, '').trim();
+        let analysis = '';
+        
+        // 1. 支持【答案】和【解析】格式
+        const answerMatch = rawQuestionText.match(/【答案】\s*([\s\S]*?)(?=【解析】|$)/);
+        const analysisMatch = rawQuestionText.match(/【解析】\s*([\s\S]*?)(?=【|$)/);
+        
+        // 2. 支持【答案与解析】格式（用于简答题/论述题）
+        const answerAndAnalysisMatch = rawQuestionText.match(/【答案与解析】\s*([\s\S]*?)(?=【|$)/);
+        
+        // 3. 支持传统的答案：和解析：格式
+        const traditionalAnswerMatch = rawQuestionText.match(/答案：?\s*([\s\S]*?)(?=\s*解析：|$)/);
+        const traditionalAnalysisMatch = rawQuestionText.match(/解析：\s*([\s\S]*?)(?=\n|$)/);
+        
+        if (answerMatch) {
+          // 从【答案】标签提取答案
+          const pureAnswer = answerMatch[1].trim();
           const answers = pureAnswer.split(',').map(a => a.trim().replace(/^：/, ''));
           answer = answers.length > 1 ? answers : answers[0];
+        } else if (traditionalAnswerMatch) {
+          // 从传统格式提取答案
+          const pureAnswer = traditionalAnswerMatch[1].trim().replace(/\s*解析：.*$/, '').trim();
+          const answers = pureAnswer.split(',').map(a => a.trim().replace(/^：/, ''));
+          answer = answers.length > 1 ? answers : answers[0];
+        } else if (answerAndAnalysisMatch) {
+          // 从【答案与解析】提取，用于简答题/论述题
+          const content = answerAndAnalysisMatch[1].trim();
+          answer = content;
+          analysis = content;
         }
         
-        // 提取解析
-        const analysisMatch = rawQuestionText.match(/解析：\s*([\s\S]*?)(?=\n|$)/);
-        const analysis = analysisMatch ? analysisMatch[1].trim() : '';
+        if (analysisMatch) {
+          // 从【解析】标签提取解析
+          analysis = analysisMatch[1].trim();
+        } else if (traditionalAnalysisMatch && !answerAndAnalysisMatch) {
+          // 从传统格式提取解析
+          analysis = traditionalAnalysisMatch[1].trim();
+        }
         
         // 识别题型：优先从类型标记提取，否则使用关键词识别
         let type: QuestionType = 'unknown';

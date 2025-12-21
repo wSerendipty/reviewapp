@@ -17,6 +17,16 @@ const ReviewMode: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
 
+  // 计算每个科目的题目数量
+  const categoryStats = React.useMemo(() => {
+    const stats = new Map<string, number>();
+    questions.forEach(q => {
+      stats.set(q.category, (stats.get(q.category) || 0) + 1);
+    });
+    return stats;
+  }, [questions]);
+
+  // 生成科目列表
   const categories = [...new Set(questions.map((q) => q.category))];
 
   // 使用useRef跟踪上一次的筛选条件
@@ -307,7 +317,7 @@ const ReviewMode: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  分类
+                  科目
                 </label>
                 <select
                   value={filter.category}
@@ -316,10 +326,10 @@ const ReviewMode: React.FC = () => {
                   }
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
                 >
-                  <option value="">全部</option>
+                  <option value="">全部 ({questions.length}道)</option>
                   {categories.map((category) => (
                     <option key={category} value={category}>
-                      {category}
+                      {category} ({categoryStats.get(category) || 0}道)
                     </option>
                   ))}
                 </select>

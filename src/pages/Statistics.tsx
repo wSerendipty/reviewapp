@@ -6,6 +6,8 @@ const Statistics: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [examRecords, setExamRecords] = useState<ExamRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [subjects, setSubjects] = useState<string[]>([]);
 
   // 获取数据
   useEffect(() => {
@@ -16,19 +18,27 @@ const Statistics: React.FC = () => {
       ]);
       setQuestions(questions);
       setExamRecords(examRecords);
+      
+      // 提取科目列表
+      const subjectsSet = new Set(questions.map(q => q.category));
+      setSubjects(['', ...subjectsSet]);
+      
       setLoading(false);
     };
     fetchData();
   }, []);
 
+  // 按科目过滤题目
+  const filteredQuestions = questions.filter(q => !selectedSubject || q.category === selectedSubject);
+  
   // 计算统计数据
   const stats = {
-    totalQuestions: questions.length,
-    singleCount: questions.filter(q => q.type === 'single').length,
-    multipleCount: questions.filter(q => q.type === 'multiple').length,
-    shortCount: questions.filter(q => q.type === 'short').length,
-    markedCount: questions.filter(q => q.isMarked).length,
-    wrongCount: questions.filter(q => q.isWrong).length,
+    totalQuestions: filteredQuestions.length,
+    singleCount: filteredQuestions.filter(q => q.type === 'single').length,
+    multipleCount: filteredQuestions.filter(q => q.type === 'multiple').length,
+    shortCount: filteredQuestions.filter(q => q.type === 'short').length,
+    markedCount: filteredQuestions.filter(q => q.isMarked).length,
+    wrongCount: filteredQuestions.filter(q => q.isWrong).length,
     totalExams: examRecords.length,
     averageScore: examRecords.length > 0 
       ? Math.round(examRecords.reduce((sum, record) => sum + record.score, 0) / examRecords.length)
@@ -40,18 +50,48 @@ const Statistics: React.FC = () => {
 
   // 按难度分布
   const difficultyDistribution = {
-    1: questions.filter(q => q.difficulty === 1).length,
-    2: questions.filter(q => q.difficulty === 2).length,
-    3: questions.filter(q => q.difficulty === 3).length,
-    4: questions.filter(q => q.difficulty === 4).length,
-    5: questions.filter(q => q.difficulty === 5).length,
+    1: filteredQuestions.filter(q => q.difficulty === 1).length,
+    2: filteredQuestions.filter(q => q.difficulty === 2).length,
+    3: filteredQuestions.filter(q => q.difficulty === 3).length,
+    4: filteredQuestions.filter(q => q.difficulty === 4).length,
+    5: filteredQuestions.filter(q => q.difficulty === 5).length,
   };
+  
+  // 按科目统计
+  const subjectStats = React.useMemo(() => {
+    const stats = new Map<string, number>();
+    questions.forEach(q => {
+      stats.set(q.category, (stats.get(q.category) || 0) + 1);
+    });
+    return stats;
+  }, [questions]);
 
   return (
     <div className="max-w-6xl mx-auto">
       <h1 className="text-3xl font-bold mb-6 text-blue-600 dark:text-blue-400">
         统计分析
       </h1>
+      
+      {/* 科目选择 */}
+      {!loading && subjects.length > 1 && (
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            选择科目
+          </label>
+          <select
+            value={selectedSubject}
+            onChange={(e) => setSelectedSubject(e.target.value)}
+            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+          >
+            <option value="">全部科目</option>
+            {subjects.filter(subject => subject !== '').map(subject => (
+              <option key={subject} value={subject}>
+                {subject} ({subjectStats.get(subject) || 0}道)
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -59,11 +99,28 @@ const Statistics: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-8">
+          {/* 科目分布 */}
+          {!loading && subjectStats.size > 1 && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold mb-4 text-blue-600 dark:text-blue-400">
+                科目分布
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[...subjectStats.entries()].map(([subject, count]) => (
+                  <div key={subject} className="flex flex-col items-center justify-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <p className="font-medium text-center">{subject}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{count}道</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
           {/* 概览统计 */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <h2 className="text-xl font-semibold mb-4 text-blue-600 dark:text-blue-400">
-                题库概览
+                题库概览 {selectedSubject && `(${selectedSubject})`}
               </h2>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">

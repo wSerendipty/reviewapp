@@ -1,5 +1,5 @@
 
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import MainLayout from './components/Layout/MainLayout';
 import Home from './pages/Home';
 import Import from './pages/Import';
@@ -14,6 +14,7 @@ function App() {
       <MainLayout>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/index" element={<Home />} />
           <Route path="/import" element={<Import />} />
           <Route path="/question-bank" element={<QuestionBank />} />
           <Route path="/exam-mode" element={<ExamMode />} />
